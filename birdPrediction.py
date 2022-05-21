@@ -287,4 +287,4 @@ his = CNNmodel.fit(TrainSpecs,
           epochs=nEpochs)
 
 #%%
-plot(his2)
+plot(his)
