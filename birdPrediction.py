@@ -24,16 +24,22 @@ from PIL import Image
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow_addons.metrics import F1Score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import multilabel_confusion_matrix
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve, auc
+import seaborn as sns
+
 
 #%%
 # Hyperparameters
-seed = 2001
+seed = 8685
 sampleRt = 32000
 sLength = 5
 shapeSpec = (48, 128)
 minFreq = 500
 maxFreq = 12500
-nEpochs = 5
+nEpochs = 20
 audiosRequired = 175
 timeLimit = 15
 
@@ -41,6 +47,10 @@ timeLimit = 15
 trainingPath ='/Users/LuisaToro/Desktop/Bird prediction/train_metadata.csv'
 inputPath = '/Users/LuisaToro/Desktop/Bird prediction/train_audio/'
 outputPath = '/Users/LuisaToro/Desktop/Bird prediction/melspectrogram_dataset/'
+soundscapePath = '/Users/LuisaToro/Desktop/Bird prediction/test_soundscapes/soundscape_453028782.ogg'
+testPath = '/Users/LuisaToro/Desktop/Bird prediction/test.csv'
+soundscapesPaths = '/Users/LuisaToro/Desktop/Bird prediction/test_soundscapes'
+samplePath = '/Users/LuisaToro/Desktop/Bird prediction/sample_submission.csv'
 #%%
 def sampling(trainingPath):
     
@@ -157,8 +167,7 @@ def dataPrep(trainSpecs,Labels):
             spec = np.array(spec, dtype='float32')
             
             # Normalize
-            spec -= spec.min()
-            spec /= spec.max()
+            spec = (spec-spec.min())/spec.max()
             if not spec.max() == 1.0 or not spec.min() == 0.0:
                 continue
     
@@ -212,7 +221,7 @@ def designModel():
         tf.keras.layers.GlobalAveragePooling2D(), 
         
         # Dense block
-        tf.keras.layers.Dense(128, activation='relu'),  
+        tf.keras.layers.Dense(256, activation='relu'),  
         tf.keras.layers.Dropout(0.5),
         
         # Classification layer
@@ -259,6 +268,7 @@ def plot(history):
     plt.plot(range(len(his)),his['loss'],label='Training')
     plt.plot(range(len(his)),his['val_loss'],label='Validation')
     plt.legend()
+    plt.ylim([0,1.1])
     plt.title('Loss')
     
     # Plot accuracy
@@ -266,14 +276,16 @@ def plot(history):
     plt.plot(range(len(his)),his['accuracy'],label='Training')
     plt.plot(range(len(his)),his['val_accuracy'],label='Validation')
     plt.legend()
+    plt.ylim([0,1.1])
     plt.title('Accuracy')
     
-    # Plot f1 score
+    # Plot f1
     plt.figure()
     plt.plot(range(len(his)),his['f1_score'],label='Training')
     plt.plot(range(len(his)),his['val_f1_score'],label='Validation')
     plt.legend()
-    plt.title('F1 score')
+    plt.ylim([0,1.1])
+    plt.title('F1 Score')
     
     plt.show()  
 
@@ -281,10 +293,180 @@ def plot(history):
 his = CNNmodel.fit(TrainSpecs, 
           TrainLabels,
           batch_size=32,
-          validation_split=0.2,
+          validation_split=0.25,
           callbacks=callbacks,
           verbose=1,
           epochs=nEpochs)
 
 #%%
 plot(his)
+
+#%%
+
+XTrain, XTest, yTrain, yTest = train_test_split(TrainSpecs, TrainLabels, test_size=0.25, shuffle=False)
+
+nEpochs = 20
+
+his2 = CNNmodel.fit(XTrain, 
+          yTrain,
+          batch_size=32,
+          validation_data = (XTest,yTest),
+          callbacks=callbacks,
+          verbose=1,
+          epochs=nEpochs)
+
+plot(his2)
+
+
+
+#%%
+def ROCcurve(yTest,predictions):
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    for i in range(len(predictions[0])):
+        fpr[i],tpr[i],_ = roc_curve(yTest[:,i], predictions[:,i])
+        roc_auc[i] = auc(fpr[i],tpr[i])
+        
+    plt.figure()
+    lw =2
+    
+    for i in range(len(predictions[0])):
+        plt.figure()
+        Class = i
+        plt.plot(
+            fpr[Class],
+            tpr[Class],
+            lw=lw,
+            label = 'ROC curve for class %0.0f (area = %0.2f)' %(i , roc_auc[Class]),
+            
+            )
+        plt.plot([0,1],[0,1],lw=lw, linestyle = '--')
+        plt.xlabel('False positive rate')
+        plt.ylabel('True positive rate')
+        plt.legend()
+predictions = CNNmodel.predict(XTest)   
+ROCcurve(yTest,predictions)
+#%%
+yTrue = np.argmax(yTest, axis=-1)
+
+yPredict = np.argmax(predictions, axis=-1)
+cm = confusion_matrix(yTrue, yPredict)
+
+fig = plt.figure()
+ax = plt.subplot()
+sns.heatmap(cm)
+
+ax.set_xlabel('Predicted')
+ax.set_ylabel('True')
+plt.xticks(rotation =90)
+ax.xaxis.set_ticklabels(Labels)
+plt.yticks(rotation =0)
+ax.yaxis.set_ticklabels(Labels)
+
+plt.title('Multilabel confusion matrix')
+
+#%%
+print(his.history.keys()) 
+def plot(history):
+    his = pd.DataFrame(history.history)
+    
+    # Plot loss:
+    plt.figure()
+    plt.plot(range(len(his)),his['loss'],label='Training')
+    plt.legend()
+    plt.title('Loss')
+    
+    # Plot accuracy
+    plt.figure()
+    plt.plot(range(len(his)),his['accuracy'],label='Training')
+    plt.legend()
+    plt.title('Accuracy')
+    
+    plt.show()  
+plot(his)
+    
+#%%
+# Prediction
+testPath = '/Users/LuisaToro/Desktop/Bird prediction/test2.csv'
+sampleSubmission = pd.read_csv(samplePath)
+testFile = pd.read_csv(testPath)
+
+with open('LABELS.pkl','wb') as f:
+    pickle.dump(Labels,f)
+
+def load_pickle(path):
+    with open(path,'rb') as f:
+        file = pickle.load(f)
+        
+    return file
+
+LABELS = load_pickle('LABELS.pkl')
+                   
+#%%
+
+def listOfFiles(path):
+    '''get test sound files'''
+    return [os.path.join(path, f) for f in os.listdir(path) if f.rsplit('.', 1)[-1] in ['ogg']]
+
+testAudio=listOfFiles(soundscapesPaths)
+
+# test files are hidden,  hence checking on train_soundscapes
+if len(testAudio) == 0:
+    testAudio = listOfFiles('../input/birdclef-2021/train_soundscapes')
+    
+print('{} FILES IN TEST SET.'.format(len(testAudio)))
+
+#%%
+
+testAudio=listOfFiles(soundscapesPaths)
+
+def predictSpecies(threshold, testAudio, testFile):
+    birds = testFile['bird']
+    row_id = []
+    prediction = []
+    for file_path in testAudio[:2]:
+        sig, rate = librosa.load(file_path, sr=sampleRt)
+        sig_splits = []
+        for i in range(0, len(sig), int(sLength * sampleRt)):
+            split = sig[i:i + int(sLength * sampleRt)]
+            if len(split) < int(sLength * sampleRt):
+                break
+            sig_splits.append(split)
+        seconds= 0
+        cont = 0
+        for chunk in sig_splits:
+            bird = birds[cont]
+            cont+=1
+            seconds += 5
+            hopLen = int(sLength * sampleRt / (shapeSpec[1] - 1))
+            melSpectro = librosa.feature.melspectrogram(y=chunk, 
+                                                      sr=sampleRt, 
+                                                      n_fft=1024, 
+                                                      hop_length=hopLen, 
+                                                      n_mels=shapeSpec[0], 
+                                                      fmin=minFreq, 
+                                                      fmax=maxFreq)
+
+            melSpectro = librosa.power_to_db(melSpectro, ref=np.max) 
+            melSpectro = (melSpectro - melSpectro.min())/melSpectro.max()
+            melSpectro = np.expand_dims(melSpectro, -1)
+            melSpectro = np.expand_dims(melSpectro, 0)
+            p = model2.predict(melSpectro)[0]
+            idx = p.argmax()
+            species = LABELS[idx]
+            score = p[idx]
+            print(score)
+            print(species, bird)
+            row_id.append(file_path.split(os.sep)[-1].rsplit('.', 1)[0]+'_' + str(bird)+'_'+ str(seconds))  
+            if species == bird and score > threshold:
+                prediction.append('True')
+            else:
+                prediction.append( 'False')    
+        result = pd.DataFrame({'row_id': row_id, 'target': prediction})
+    return result
+
+testFile = pd.read_csv(testPath)
+result = predictSpecies(0.5, testAudio, testFile)
+
+print(result)
