@@ -1,0 +1,12 @@
+pandas
+numpy
+pickle
+librosa
+librosa.display
+matplotlib.pyplot
+skalearn
+PIL
+os
+tqdm
+tensorflow
+seaborn
