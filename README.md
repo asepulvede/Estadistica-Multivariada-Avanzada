@@ -1,5 +1,4 @@
 # Identification of bird sounds in soundscapes with Convolutional Neuronal Network
-To carry out the identification of bird sounds, the following steps were followed:
-- Item 1
-- Item 2
-- Item 3
+This is a Convolutional Neural Network (CNN) based audio classification model to detect and classify bird species. The classification model consists of stages:
+- birdEDA.py: Where we do an Exploratory Data Analysis, which was obtained from the Kaggle's competition: https://www.kaggle.com/c/birdclef-2022. For the Exploratory Data Analysis, we choose a random audio file to perform an exploratory visualization, where we calculate and plot the Mel spectrogram, spectral centroid, spectral bandwidth, and the spectral roll-off. On the other hand, to have a global image of the regions that provide the recording, a heat map was made. Finally, a bar graph and a mapping of bird species with most and least audio files were made.
+- birdPrediction.py
